@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+      <include file="$(find mynt_eye_ros_wrapper)/launch/mynteye.launch" />
+      <include file="$(find novatel_span_driver)/launch/example_for_usb.launch" />
+      <include file="$(find lslidar_c16_decoder)/launch/lslidar_c16.launch" />
+</launch>

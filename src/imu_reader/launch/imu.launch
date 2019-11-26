@@ -1,0 +1,13 @@
+<launch>
+    <node pkg="imu_reader" type="imu_reader_node" name="mynteye_imu" output="screen">
+        <param name="imu_topic" type="string" value= "/mynteye/imu/data_raw"/>    #imu topic的名字
+        <param name="imu_name" type="string" value= "mynteye_imu"/>
+        <param name="data_save_path" type="string" value= "/home/jyp/Projects/calibration/"/>
+    </node>
+        <node pkg="imu_reader" type="imu_reader_node" name="novatel_imu" output="screen">
+        <param name="imu_topic" type="string" value= "/imu/data"/>    #imu topic的名字
+        <param name="imu_name" type="string" value= "novatel_imu"/>
+        <param name="data_save_path" type="string" value= "/home/jyp/Projects/calibration/"/>
+    </node>
+</launch>
+

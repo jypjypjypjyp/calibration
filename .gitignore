@@ -1,0 +1,6 @@
+build
+devel
+imu_data
+mynt-imu_data
+.vscode
+*.csv

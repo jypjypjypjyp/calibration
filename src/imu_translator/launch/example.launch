@@ -1,0 +1,6 @@
+<launch>
+
+    <node name="imu_translator" pkg="imu_translator" type="driver">
+
+    </node>
+</launch>

@@ -1,0 +1,158 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Software License Agreement (BSD)
+#
+#  file      driver
+#  authors   Mike Purvis <mpurvis@clearpathrobotics.com>
+#  copyright Copyright (c) 2014, Clearpath Robotics, Inc., All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+# the following conditions are met:
+#  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
+#    following disclaimer.
+#  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+#    following disclaimer in the documentation and/or other materials provided with the distribution.
+#  * Neither the name of Clearpath Robotics nor the names of its contributors may be used to endorse or promote
+#    products derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WAR-
+# RANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, IN-
+# DIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+# OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+import rospy
+from sensor_msgs.msg import Imu
+from geometry_msgs.msg import Quaternion
+from novatel_msgs.msg import RAWIMU
+IMU_ORIENT_COVAR = [1e-3, 0, 0,
+                    0, 1e-3, 0,
+                    0, 0, 1e-3]
+
+IMU_VEL_COVAR = [1e-3, 0, 0,
+                 0, 1e-3, 0,
+                 0, 0, 1e-3]
+
+IMU_ACCEL_COVAR = [1e-3, 0, 0,
+                   0, 1e-3, 0,
+                   0, 0, 1e-3]
+
+NAVSAT_COVAR = [1, 0, 0,
+                0, 1, 0,
+                0, 0, 1]
+
+POSE_COVAR = [1, 0, 0, 0, 0, 0,
+              0, 1, 0, 0, 0, 0,
+              0, 0, 1, 0, 0, 0,
+              0, 0, 0, 0.1, 0, 0,
+              0, 0, 0, 0, 0.1, 0,
+              0, 0, 0, 0, 0, 0.1]
+
+TWIST_COVAR = [1, 0, 0, 0, 0, 0,
+               0, 1, 0, 0, 0, 0,
+               0, 0, 1, 0, 0, 0,
+               0, 0, 0, 0.1, 0, 0,
+               0, 0, 0, 0, 0.1, 0,
+               0, 0, 0, 0, 0, 0.1]
+
+
+class NovatelPublisher(object):
+    """ Subscribes to the directly-translated messages from the SPAN system
+        and repackages the resultant data as standard ROS messages. """
+
+    def __init__(self):
+        # Parameters
+        self.publish_tf = rospy.get_param('~publish_tf', False)
+        self.odom_frame = rospy.get_param('~odom_frame', 'odom_combined')
+        self.base_frame = rospy.get_param('~base_frame', 'base_link')
+
+        # When True, UTM odom x, y pose will be published with respect to the
+        # first coordinate received.
+        self.zero_start = rospy.get_param('~zero_start', False)
+
+        self.imu_rate = rospy.get_param('~rate', 100)
+
+        # Topic publishers
+        self.pub_imu = rospy.Publisher('imu/data', Imu, queue_size=1)
+
+        self.init = False       # If we've been initialized
+        self.orientation = [0] * 4  # Empty quaternion until we hear otherwise
+        self.orientation_covariance = IMU_ORIENT_COVAR
+
+        rospy.Subscriber('novatel_data/rawimu', RAWIMU, self.rawimu_handler)
+
+    def rawimu_handler(self, rawimus):
+        imu = Imu()
+        imu.header.stamp.secs = rawimus.gpssec
+        imu.header.frame_id = self.base_frame
+
+        # Populate orientation field with one from inspvax message.
+        imu.orientation = Quaternion(*self.orientation)
+        imu.orientation_covariance = self.orientation_covariance
+
+        # Angular rates (rad/s)
+        # corrimudata log provides instantaneous rates so multiply by IMU rate in Hz
+        imu.angular_velocity.x = rawimus.x_gyro * 0.1 / (3600.0 * 256.0) * self.imu_rate
+        imu.angular_velocity.y = -rawimus.my_gyro * 0.1 / (3600.0 * 256.0) * self.imu_rate
+        imu.angular_velocity.z = rawimus.z_gyro * 0.1 / (3600.0 * 256.0) * self.imu_rate
+        imu.angular_velocity_covariance = IMU_VEL_COVAR
+
+        # Linear acceleration (m/s^2)
+        imu.linear_acceleration.x = rawimus.x_accel * 0.05 / 2**15 * self.imu_rate
+        imu.linear_acceleration.y = rawimus.my_accel * 0.05 / 2**15 * self.imu_rate
+        imu.linear_acceleration.z = rawimus.z_accel * 0.05 / 2**15 * self.imu_rate
+        imu.linear_acceleration_covariance = IMU_ACCEL_COVAR
+
+        self.pub_imu.publish(imu)
+        pass
+
+def main():
+    rospy.init_node('imu_translator')
+
+
+    pub = NovatelPublisher()
+    rospy.Rate(200*250)
+    rospy.spin()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except rospy.ROSInterruptException:
+        pass
+
+
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Software License Agreement (BSD)
+#
+#  file      @publisher.py
+#  authors   Mike Purvis <mpurvis@clearpathrobotics.com>
+#            NovAtel <novatel.com/support>
+#  copyright Copyright (c) 2012, Clearpath Robotics, Inc., All rights reserved.
+#            Copyright (c) 2014, NovAtel Inc., All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+# the following conditions are met:
+#  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
+#    following disclaimer.
+#  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+#    following disclaimer in the documentation and/or other materials provided with the distribution.
+#  * Neither the name of Clearpath Robotics nor the names of its contributors may be used to endorse or promote
+#    products derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WAR-
+# RANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, IN-
+# DIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+# OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+# FIXED COVARIANCES
+# TODO: Work these out...
